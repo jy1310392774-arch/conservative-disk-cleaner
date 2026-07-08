@@ -1,0 +1,51 @@
+{
+  "name": "conservative-disk-cleaner-ui",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Apple HIG inspired UI for Conservative Disk Cleaner",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "concurrently -k \"vite --host 127.0.0.1\" \"wait-on http://127.0.0.1:5173 && set DISK_CLEANER_DEV_SERVER=http://127.0.0.1:5173&& electron .\"",
+    "build": "vite build",
+    "start": "electron .",
+    "package:win": "npm run build && electron-builder --win dir --x64"
+  },
+  "dependencies": {
+    "liquid-glass-react": "^1.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "appId": "local.conservative.disk.cleaner",
+    "productName": "Conservative Disk Cleaner",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "extraFiles": [
+      {
+        "from": "../ConservativeDiskCleaner.ps1",
+        "to": "ConservativeDiskCleaner.ps1"
+      }
+    ],
+    "win": {
+      "target": [
+        "dir"
+      ]
+    }
+  }
+}

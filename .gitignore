@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+ui/node_modules/
+
+# Build output
+ui/dist/
+ui/release/
+dist/
+release/
+release-artifacts/
+
+# Runtime reports and temporary files
+reports/
+ui/release/**/reports/
+*.log
+ui-debug.log
+tmp-*/
+ui/last-ui-pid.txt
+ui/latest-ui-screenshot.png
+ui/main.cjs
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
