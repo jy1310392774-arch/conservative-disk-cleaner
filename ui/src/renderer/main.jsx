@@ -12,6 +12,7 @@ import {
   ShieldCheck,
   Trash2
 } from "lucide-react";
+import { RippleButton } from "@/components/ui/ripple-button";
 import "./styles.css";
 
 const defaultDrives = "";
@@ -481,16 +482,17 @@ function DrivePicker({ options, value, onChange }) {
   return (
     <div className="drive-picker">
       {options.map((drive) => (
-        <button
+        <RippleButton
           type="button"
           key={drive.id}
           className={selected.has(drive.id) ? "selected" : ""}
+          rippleColor={selected.has(drive.id) ? "rgba(255,255,255,0.72)" : "rgba(49,80,100,0.22)"}
           onClick={() => toggle(drive.id)}
           title={`${drive.label} ${drive.name} 可用 ${formatGB(drive.free)} / 总计 ${formatGB(drive.size)}`}
         >
           <span>{drive.label}</span>
           <small>{formatGB(drive.free)} 可用</small>
-        </button>
+        </RippleButton>
       ))}
     </div>
   );
