@@ -358,7 +358,7 @@ function App() {
           onToggleExpanded={() => setProgressExpanded((current) => !current)}
         />
 
-        <section className="content-card">
+        <GlassCard className="content-card" glowColor="orange">
           {activeView === "plan" && (
             <PlanView
               candidates={candidates}
@@ -379,7 +379,7 @@ function App() {
           {activeView === "log" && (
             <pre className="log-view" ref={shellRef}>{log || "暂无运行日志。扫描或执行后会显示 PowerShell 输出。"}</pre>
           )}
-        </section>
+        </GlassCard>
       </section>
       <ConfirmDialog dialog={dialog} />
     </main>
