@@ -323,7 +323,6 @@ button:disabled {
   --glow-base: 210;
   --glow-spread: 65;
   position: relative;
-  border-radius: inherit;
   isolation: isolate;
 }
 
