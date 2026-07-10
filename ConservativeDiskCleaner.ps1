@@ -30,6 +30,9 @@ param(
 
     [int]$LargeFileThresholdGB = 2,
 
+    [ValidateSet("Fast", "Deep")]
+    [string]$ScanMode = "Fast",
+
     [switch]$IncludeMediumRisk
 )
 
@@ -339,11 +342,45 @@ function Find-VirtualDisks {
 }
 
 function Find-LargeFiles {
-    param([string]$DriveRoot)
+    param(
+        [string]$DriveRoot,
+        [ValidateSet("Fast", "Deep")]
+        [string]$ScanMode = "Fast"
+    )
 
     $threshold = [int64]$LargeFileThresholdGB * 1GB
     $found = 0
     $script:__largeFileFoundCount = 0
+
+    if ($ScanMode -eq "Deep") {
+        Write-ScanStep "$DriveRoot 精确搜索：递归查找全盘大文件，耗时会明显增加"
+        Get-ChildItem -LiteralPath $DriveRoot -Force -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Length -ge $threshold -and
+                -not (Test-IsForbiddenPath $_.FullName) -and
+                -not ($_.Attributes -band [IO.FileAttributes]::ReparsePoint)
+            } |
+            Sort-Object Length -Descending |
+            Select-Object -First 200 |
+            ForEach-Object {
+                $extension = $_.Extension.ToLowerInvariant()
+                $looksLikeMediaOrArchive = $extension -in @(".mp4", ".mov", ".mkv", ".avi", ".zip", ".7z", ".rar", ".iso", ".msi", ".exe")
+                [pscustomobject]@{
+                    Path                 = $_.FullName
+                    SizeBytes            = [int64]$_.Length
+                    SizeGB               = Convert-BytesToGB $_.Length
+                    Category             = if ($looksLikeMediaOrArchive) { "B" } else { "C" }
+                    Action               = "Skip"
+                    Risk                 = if ($looksLikeMediaOrArchive) { "Medium" } else { "High" }
+                    Reason               = if ($looksLikeMediaOrArchive) { "大型媒体、压缩包或安装包，建议人工判断后移动" } else { "大型文件类型不明确，禁止自动处理" }
+                    RequiresConfirmation = $true
+                    AutoApproved         = $false
+                    TargetPath           = $null
+                }
+            }
+        return
+    }
+
     $roots = [System.Collections.Generic.List[string]]::new()
 
     Get-ChildItem -LiteralPath $DriveRoot -Force -File -ErrorAction SilentlyContinue |
@@ -468,7 +505,7 @@ function Scan-Drive {
     }
 
     Write-ScanStep "$driveRoot 查找大文件、安装包、媒体和虚拟磁盘候选（只列出或人工判断）"
-    Find-LargeFiles $driveRoot | ForEach-Object { $observations.Add($_) }
+    Find-LargeFiles -DriveRoot $driveRoot -ScanMode $ScanMode | ForEach-Object { $observations.Add($_) }
 
     Write-ScanStep "$driveRoot 统计根目录大目录排行"
     $topDirs = @(Get-DriveTopDirectories $driveRoot)
@@ -493,6 +530,7 @@ function Scan-Drive {
         Root         = $driveRoot
         FreeGB       = Convert-BytesToGB $Drive.Free
         UsedGB       = Convert-BytesToGB $Drive.Used
+        ScanMode     = $ScanMode
         TopDirs      = $topDirs
         Candidates   = @($candidates | Sort-Object SizeBytes -Descending)
         Observations = @($observations | Sort-Object SizeBytes -Descending)

@@ -9,7 +9,10 @@ import {
   ListChecks,
   Play,
   RefreshCw,
+  Search,
+  Settings,
   ShieldCheck,
+  Zap,
   Trash2
 } from "lucide-react";
 import { RippleButton } from "@/components/ui/ripple-button";
@@ -72,6 +75,7 @@ function App() {
   const [activeView, setActiveView] = useState("plan");
   const [log, setLog] = useState("");
   const [status, setStatus] = useState("准备就绪");
+  const [scanMode, setScanMode] = useState(() => window.localStorage.getItem("disk-cleaner-scan-mode") === "Deep" ? "Deep" : "Fast");
   const [selectedRiskDeletes, setSelectedRiskDeletes] = useState({});
   const [progressExpanded, setProgressExpanded] = useState(false);
   const [lastRunResult, setLastRunResult] = useState(null);
@@ -113,6 +117,10 @@ function App() {
       });
     });
   }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("disk-cleaner-scan-mode", scanMode);
+  }, [scanMode]);
 
   const candidates = uniqueByPath([...(report.candidates || []), ...(report.observations || [])]);
   const observations = report.observations || [];
@@ -171,12 +179,12 @@ function App() {
 
   async function runScan() {
     setBusy(true);
-    setStatus("正在扫描磁盘");
+    setStatus(scanMode === "Deep" ? "正在精确搜索全盘大文件" : "正在快速扫描磁盘");
     setLog("");
     setLastRunResult(null);
     setProgressExpanded(false);
     setActiveView("plan");
-    const result = await window.diskCleaner.scan({ drives, targetRoot });
+    const result = await window.diskCleaner.scan({ drives, targetRoot, scanMode });
     setReport(result.report);
     setLastRunResult({ code: result.code, output: result.output || "" });
     const scannedDrives = (result.report?.summary || []).map((drive) => drive.Drive).filter(Boolean).join("、");
@@ -306,6 +314,9 @@ function App() {
           <button className={activeView === "log" ? "active" : ""} onClick={() => setActiveView("log")}>
             <HardDrive size={18} /> 运行日志
           </button>
+          <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
+            <Settings size={18} /> 设置
+          </button>
         </nav>
 
         <button className="ghost-button" onClick={() => window.diskCleaner.openReports()}>
@@ -379,6 +390,7 @@ function App() {
           {activeView === "log" && (
             <pre className="log-view" ref={shellRef}>{log || "暂无运行日志。扫描或执行后会显示 PowerShell 输出。"}</pre>
           )}
+          {activeView === "settings" && <SettingsView scanMode={scanMode} onScanModeChange={setScanMode} />}
         </GlassCard>
       </section>
       <ConfirmDialog dialog={dialog} />
@@ -442,6 +454,44 @@ function GlassCard({ children, className = "", glowColor = "blue" }) {
       </LiquidGlass>
       <div className="glass-content">{children}</div>
     </GlowCard>
+  );
+}
+
+function SettingsView({ scanMode, onScanModeChange }) {
+  return (
+    <div className="settings-view">
+      <div className="section-header">
+        <div>
+          <h3>扫描设置</h3>
+          <span>选择大文件查找范围。风险保护规则在两种模式下都保持不变。</span>
+        </div>
+      </div>
+      <div className="scan-mode-selector" role="radiogroup" aria-label="扫描模式">
+        <button
+          type="button"
+          role="radio"
+          aria-checked={scanMode === "Fast"}
+          className={scanMode === "Fast" ? "selected" : ""}
+          onClick={() => onScanModeChange("Fast")}
+        >
+          <Zap size={20} />
+          <span>快速模式</span>
+          <small>扫描常见缓存、下载、桌面、文档等重点位置，速度最快。</small>
+        </button>
+        <button
+          type="button"
+          role="radio"
+          aria-checked={scanMode === "Deep"}
+          className={scanMode === "Deep" ? "selected" : ""}
+          onClick={() => onScanModeChange("Deep")}
+        >
+          <Search size={20} />
+          <span>精确搜索</span>
+          <small>递归查找所选磁盘上的大文件，适合 E 盘等资料盘，耗时明显更长。</small>
+        </button>
+      </div>
+      <p className="settings-note">精确搜索仍会跳过系统目录、程序目录、重解析点和受保护的软件数据；发现的未知大文件只会列出，不会自动删除。</p>
+    </div>
   );
 }
 

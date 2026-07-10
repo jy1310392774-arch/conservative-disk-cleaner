@@ -79,6 +79,8 @@ Do **not** copy only the `.exe`; the packaged folder also contains runtime files
 4. Review the cleanup plan.
 5. Execute low-risk items, or manually inspect and select other items.
 
+Use **Settings / 设置** to choose the scan mode. Fast mode is the default; Exact search recursively discovers large files on the selected drive and may take much longer.
+
 步骤：
 
 1. 选择一个或多个盘符。
@@ -86,6 +88,8 @@ Do **not** copy only the `.exe`; the packaged folder also contains runtime files
 3. 点击 **开始扫描**。
 4. 查看清理计划。
 5. 执行低风险项，或人工检查后勾选其他项目。
+
+可在 **设置** 中选择扫描模式。快速模式为默认；精确搜索会递归查找所选磁盘的大文件，耗时可能明显增加。
 
 ## What Actions Mean / 动作说明
 

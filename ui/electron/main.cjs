@@ -216,7 +216,8 @@ ipcMain.handle("disk:listDrives", async () => {
 });
 
 ipcMain.handle("disk:scan", async (event, options) => {
-  const args = ["-Mode", "Scan", "-TargetRoot", options.targetRoot || "E:\\DiskCleanerMoved"];
+  const scanMode = options.scanMode === "Deep" ? "Deep" : "Fast";
+  const args = ["-Mode", "Scan", "-ScanMode", scanMode, "-TargetRoot", options.targetRoot || "E:\\DiskCleanerMoved"];
   if (options.drives && options.drives.trim()) {
     const selectedDrive = String(options.drives)
       .split(",")
