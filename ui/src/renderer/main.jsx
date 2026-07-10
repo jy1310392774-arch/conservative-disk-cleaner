@@ -101,8 +101,8 @@ function App() {
       if (options.length) {
         setDrives((current) => {
           const valid = new Set(options.map((drive) => drive.id));
-          const selected = String(current || "").split(",").map((item) => item.trim()).filter((item) => valid.has(item));
-          return selected.length ? selected.join(",") : options.map((drive) => drive.id).join(",");
+          const selected = String(current || "").split(",").map((item) => item.trim()).find((item) => valid.has(item));
+          return selected || options[0].id;
         });
       }
     });
@@ -331,7 +331,7 @@ function App() {
 
         <GlassCard className="control-card">
           <label>
-            <span>扫描盘符</span>
+            <span>扫描磁盘（单选）</span>
             <DrivePicker options={driveOptions} value={drives} onChange={setDrives} />
           </label>
           <label>
@@ -469,14 +469,7 @@ function ConfirmDialog({ dialog }) {
 }
 
 function DrivePicker({ options, value, onChange }) {
-  const selected = new Set(String(value || "").split(",").map((item) => item.trim()).filter(Boolean));
-
-  function toggle(id) {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    onChange(Array.from(next).join(","));
-  }
+  const selected = String(value || "").trim();
 
   if (!options.length) {
     return <div className="drive-picker loading">正在读取磁盘...</div>;
@@ -488,9 +481,9 @@ function DrivePicker({ options, value, onChange }) {
         <RippleButton
           type="button"
           key={drive.id}
-          className={selected.has(drive.id) ? "selected" : ""}
-          rippleColor={selected.has(drive.id) ? "rgba(255,255,255,0.72)" : "rgba(49,80,100,0.22)"}
-          onClick={() => toggle(drive.id)}
+          className={selected === drive.id ? "selected" : ""}
+          rippleColor={selected === drive.id ? "rgba(255,255,255,0.72)" : "rgba(49,80,100,0.22)"}
+          onClick={() => onChange(drive.id)}
           title={`${drive.label} ${drive.name} 可用 ${formatGB(drive.free)} / 总计 ${formatGB(drive.size)}`}
         >
           <span>{drive.label}</span>

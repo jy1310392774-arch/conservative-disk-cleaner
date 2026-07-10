@@ -218,12 +218,14 @@ ipcMain.handle("disk:listDrives", async () => {
 ipcMain.handle("disk:scan", async (event, options) => {
   const args = ["-Mode", "Scan", "-TargetRoot", options.targetRoot || "E:\\DiskCleanerMoved"];
   if (options.drives && options.drives.trim()) {
-    args.push("-Drives");
-    String(options.drives)
+    const selectedDrive = String(options.drives)
       .split(",")
       .map((drive) => drive.trim())
       .filter(Boolean)
-      .forEach((drive) => args.push(drive));
+      .at(0);
+    if (selectedDrive) {
+      args.push("-Drives", selectedDrive);
+    }
   }
 
   const result = await runPowerShell(args, (text) => {

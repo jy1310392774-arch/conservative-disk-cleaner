@@ -174,7 +174,7 @@ The recommended release artifact is a zip of the entire `win-unpacked` folder:
 推荐发行物是完整 `win-unpacked` 文件夹的 zip：
 
 ```text
-Conservative-Disk-Cleaner-v1.0.0-win-x64.zip
+Conservative-Disk-Cleaner-v1.1.2-win-x64.zip
 ```
 
 ## Known Limitations / 已知限制

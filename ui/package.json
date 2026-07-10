@@ -1,6 +1,6 @@
 {
   "name": "conservative-disk-cleaner-ui",
-  "version": "1.0.0",
+  "version": "1.1.2",
   "private": true,
   "description": "Apple HIG inspired UI for Conservative Disk Cleaner",
   "main": "electron/main.cjs",
