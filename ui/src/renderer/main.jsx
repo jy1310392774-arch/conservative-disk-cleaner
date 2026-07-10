@@ -13,6 +13,7 @@ import {
   Trash2
 } from "lucide-react";
 import { RippleButton } from "@/components/ui/ripple-button";
+import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import "./styles.css";
 
 const defaultDrives = "";
@@ -284,6 +285,7 @@ function App() {
 
   return (
     <main className="app-shell">
+      <BackgroundGradientAnimation />
       <aside className="sidebar">
         <div className="app-title">
           <div className="app-mark"><ShieldCheck size={22} /></div>
