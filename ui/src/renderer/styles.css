@@ -317,6 +317,55 @@ button:disabled {
   backdrop-filter: blur(18px) saturate(1.1);
 }
 
+.spotlight-card {
+  --glow-x: -500px;
+  --glow-y: -500px;
+  --glow-base: 210;
+  --glow-spread: 65;
+  position: relative;
+  border-radius: inherit;
+  isolation: isolate;
+}
+
+.spotlight-card::before,
+.spotlight-card::after {
+  position: absolute;
+  pointer-events: none;
+  content: "";
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+
+.spotlight-card::before {
+  z-index: 4;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: radial-gradient(150px 150px at var(--glow-x) var(--glow-y), hsl(calc(var(--glow-base) + var(--glow-spread)) 85% 70% / 0.92), transparent 70%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+.spotlight-card::after {
+  z-index: -1;
+  inset: -12px;
+  border-radius: inherit;
+  filter: blur(18px);
+  background: radial-gradient(100px 100px at var(--glow-x) var(--glow-y), hsl(calc(var(--glow-base) + var(--glow-spread)) 85% 62% / 0.30), transparent 72%);
+}
+
+.spotlight-card:hover::before,
+.spotlight-card:hover::after {
+  opacity: 1;
+}
+
+.spotlight-card-content {
+  position: relative;
+  height: 100%;
+  border-radius: inherit;
+}
+
 .liquid-bg {
   pointer-events: none;
   opacity: 0.55;

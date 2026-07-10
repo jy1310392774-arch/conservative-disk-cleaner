@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { RippleButton } from "@/components/ui/ripple-button";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
+import { GlowCard } from "@/components/ui/spotlight-card";
 import "./styles.css";
 
 const defaultDrives = "";
@@ -425,9 +426,9 @@ function App() {
   }
 }
 
-function GlassCard({ children, className = "" }) {
+function GlassCard({ children, className = "", glowColor = "blue" }) {
   return (
-    <div className={`glass-card ${className}`}>
+    <GlowCard className={`glass-card ${className}`} glowColor={glowColor}>
       <LiquidGlass
         className="liquid-bg"
         blurAmount={0.08}
@@ -440,7 +441,7 @@ function GlassCard({ children, className = "" }) {
         <span aria-hidden="true" />
       </LiquidGlass>
       <div className="glass-content">{children}</div>
-    </div>
+    </GlowCard>
   );
 }
 
@@ -502,7 +503,7 @@ function DrivePicker({ options, value, onChange }) {
 
 function Metric({ icon, label, value }) {
   return (
-    <GlassCard className="metric">
+    <GlassCard className="metric" glowColor="green">
       <div className="metric-icon">{icon}</div>
       <div>
         <p>{label}</p>
