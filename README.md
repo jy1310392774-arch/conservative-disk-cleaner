@@ -14,7 +14,7 @@
 
 ## Screens and UX / 界面与体验
 
-The desktop UI is built with Electron + React, using an Apple HIG-inspired layout and `liquid-glass-react` for glass-style panels.
+The desktop UI is built with Electron + React, using an Apple HIG-inspired layout, React Bits `GlassSurface`, and pointer spotlight effects for glass-style panels.
 
 桌面界面基于 Electron + React，整体参考 Apple HIG，并使用 `liquid-glass-react` 实现玻璃质感卡片。
 

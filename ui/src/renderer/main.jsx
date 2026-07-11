@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import LiquidGlass from "liquid-glass-react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -19,6 +18,7 @@ import {
 import { RippleButton } from "@/components/ui/ripple-button";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { GlowCard } from "@/components/ui/spotlight-card";
+import GlassSurface from "@/components/ui/glass-surface";
 import "./styles.css";
 
 const defaultDrives = "";
@@ -441,18 +441,17 @@ function App() {
 function GlassCard({ children, className = "", glowColor = "blue" }) {
   return (
     <GlowCard className={`glass-card ${className}`} glowColor={glowColor}>
-      <LiquidGlass
-        className="liquid-bg"
-        blurAmount={0.08}
-        saturation={120}
-        elasticity={0}
-        cornerRadius={18}
-        overLight
-        style={{ position: "absolute", inset: 0, top: "auto", left: "auto", transform: "none", width: "100%", height: "100%" }}
+      <GlassSurface
+        className="glass-surface-fill"
+        width="100%"
+        height="100%"
+        borderRadius={18}
+        backgroundOpacity={0.12}
+        saturation={1.1}
+        distortionScale={-90}
       >
-        <span aria-hidden="true" />
-      </LiquidGlass>
-      <div className="glass-content">{children}</div>
+        <div className="glass-content">{children}</div>
+      </GlassSurface>
     </GlowCard>
   );
 }
