@@ -22,6 +22,7 @@ interface GlassSurfaceProps {
   xChannel?: Channel;
   yChannel?: Channel;
   mixBlendMode?: GlobalCompositeOperation;
+  useSvgFilter?: boolean;
   className?: string;
   style?: CSSProperties;
 }
@@ -52,6 +53,7 @@ export default function GlassSurface({
   xChannel = "R",
   yChannel = "G",
   mixBlendMode = "screen",
+  useSvgFilter = false,
   className = "",
   style = {}
 }: GlassSurfaceProps) {
@@ -72,8 +74,8 @@ export default function GlassSurface({
   };
 
   useEffect(() => {
-    setSvgSupported(supportsSvgFilters(filterId));
-  }, [filterId]);
+    setSvgSupported(useSvgFilter && supportsSvgFilters(filterId));
+  }, [filterId, useSvgFilter]);
 
   useEffect(() => {
     updateMap();

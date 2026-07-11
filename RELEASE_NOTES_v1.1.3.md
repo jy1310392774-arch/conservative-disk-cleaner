@@ -18,6 +18,18 @@
 - Verified production renderer build with `npm run build`.
 - Verified Windows x64 unpacked application packaging with `npm run package:win`.
 
+### Application Uninstall
+
+- Added an installed-applications page that starts only the software's registered Windows uninstaller.
+- After the original uninstaller closes, users can review the registered install directory and the matching uninstall registry entry before any cleanup.
+- Residual cleanup is opt-in, requires two confirmations, sends directories to Recycle Bin, and never scans AppData or unrelated registry areas.
+
+### Interaction
+
+- Added animated transitions when changing sidebar pages.
+- Added pointer-aware border glow to primary interface cards.
+- Fixed packaged installed-app discovery by shipping the registry query script outside the application archive; Chinese application names are preserved.
+
 ## 中文
 
 ### 视觉优化
@@ -35,3 +47,15 @@
 
 - 已通过 `npm run build` 生产构建验证。
 - 已通过 `npm run package:win` Windows x64 未封装目录打包验证。
+
+### 应用卸载
+
+- 新增已安装应用页面，只启动 Windows 登记的软件原始卸载程序。
+- 原始卸载程序结束后，可检查登记的安装目录和对应卸载注册表项，再决定是否清理。
+- 残留清理默认不执行，必须勾选并经过两次确认；目录移入回收站，不扫描 AppData 或无关注册表位置。
+
+### 交互优化
+
+- 侧边栏切换页面时加入过渡动画。
+- 主界面卡片加入跟随鼠标的边缘高光。
+- 将应用查询脚本放在打包程序外部，修复应用列表读取及中文软件名称显示问题。

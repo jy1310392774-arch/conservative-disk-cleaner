@@ -12,5 +12,9 @@ contextBridge.exposeInMainWorld("diskCleaner", {
     const listener = (_event, text) => callback(text);
     ipcRenderer.on("disk:log", listener);
     return () => ipcRenderer.removeListener("disk:log", listener);
-  }
+  },
+  listInstalledApps: () => ipcRenderer.invoke("uninstall:listApps"),
+  runUninstaller: (appId) => ipcRenderer.invoke("uninstall:run", appId),
+  scanUninstallResiduals: (appId) => ipcRenderer.invoke("uninstall:scanResiduals", appId),
+  removeUninstallResiduals: (appId, candidateIds) => ipcRenderer.invoke("uninstall:removeResiduals", appId, candidateIds)
 });

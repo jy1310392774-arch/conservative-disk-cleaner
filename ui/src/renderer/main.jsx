@@ -7,6 +7,7 @@ import {
   FolderOpen,
   HardDrive,
   ListChecks,
+  PackageOpen,
   Play,
   RefreshCw,
   Search,
@@ -19,6 +20,8 @@ import { RippleButton } from "@/components/ui/ripple-button";
 import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
 import { GlowCard } from "@/components/ui/spotlight-card";
 import GlassSurface from "@/components/ui/glass-surface";
+import AnimatedContent from "@/components/ui/animated-content";
+import BorderGlow from "@/components/ui/border-glow";
 import "./styles.css";
 
 const defaultDrives = "";
@@ -82,6 +85,10 @@ function App() {
   const [lastRunResult, setLastRunResult] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [installedApps, setInstalledApps] = useState([]);
+  const [appsLoading, setAppsLoading] = useState(false);
+  const [appsError, setAppsError] = useState("");
+  const [uninstallState, setUninstallState] = useState(null);
   const shellRef = useRef(null);
   const workspaceRef = useRef(null);
 
@@ -294,6 +301,79 @@ function App() {
     setBusy(false);
   }
 
+  async function openUninstaller() {
+    setActiveView("uninstall");
+    if (installedApps.length || appsLoading) return;
+    setAppsLoading(true);
+    const result = await window.diskCleaner.listInstalledApps();
+    setInstalledApps(result?.apps || []);
+    setAppsError(result?.error || "");
+    setAppsLoading(false);
+  }
+
+  async function refreshInstalledApps() {
+    setAppsLoading(true);
+    const result = await window.diskCleaner.listInstalledApps();
+    setInstalledApps(result?.apps || []);
+    setAppsError(result?.error || "");
+    setAppsLoading(false);
+  }
+
+  async function runApplicationUninstaller(appEntry) {
+    const approved = await showConfirm({
+      title: "启动软件自己的卸载程序",
+      message: `将启动“${appEntry.name}”登记的原始卸载程序。\n\n本工具不会添加静默、强制或清理注册表参数。请在软件自身的卸载窗口中确认操作。`,
+      confirmText: "启动卸载程序",
+      danger: true
+    });
+    if (!approved) return;
+
+    setBusy(true);
+    setUninstallState({ app: appEntry, candidates: [], selected: {} });
+    const result = await window.diskCleaner.runUninstaller(appEntry.id);
+    setBusy(false);
+    const inspect = await showConfirm({
+      title: "卸载程序已结束",
+      message: `“${appEntry.name}”的卸载程序已退出。\n\n是否检查该软件登记的安装目录和自身卸载注册表项？扫描不会删除任何内容。`,
+      confirmText: "检查残留",
+      cancelText: "暂不检查",
+      danger: false
+    });
+    if (!inspect) return;
+    setBusy(true);
+    const residualResult = await window.diskCleaner.scanUninstallResiduals(appEntry.id);
+    setBusy(false);
+    setUninstallState({ app: appEntry, candidates: residualResult.candidates || [], selected: {}, output: result.output || residualResult.output || "" });
+  }
+
+  async function removeSelectedResiduals() {
+    const selectedIds = Object.entries(uninstallState?.selected || {}).filter(([, checked]) => checked).map(([id]) => id);
+    if (!selectedIds.length) {
+      await showAlert({ message: "请先勾选要处理的残留项。" });
+      return;
+    }
+    const first = await showConfirm({
+      title: "确认清理卸载残留",
+      message: "将处理已勾选的项目。目录会移入回收站；注册表项会被永久删除。请确认你已核对每一项。",
+      confirmText: "继续",
+      danger: true
+    });
+    if (!first) return;
+    const second = await showConfirm({
+      title: "第二次确认",
+      message: "这是高风险操作。你确认只删除该软件已卸载后的残留目录和其自身卸载注册表项吗？",
+      confirmText: "确认清理",
+      danger: true
+    });
+    if (!second) return;
+    setBusy(true);
+    const result = await window.diskCleaner.removeUninstallResiduals(uninstallState.app.id, selectedIds);
+    setBusy(false);
+    await showAlert({ title: "残留处理完成", message: result.output || "操作已完成。" });
+    setUninstallState((current) => current ? { ...current, candidates: current.candidates.filter((candidate) => !selectedIds.includes(candidate.id)), selected: {} } : current);
+    refreshInstalledApps();
+  }
+
   return (
     <main className="app-shell">
       <BackgroundGradientAnimation />
@@ -310,6 +390,7 @@ function App() {
           <SidebarOption icon={ListChecks} label="清理计划" selected={activeView === "plan"} open={sidebarOpen} onClick={() => setActiveView("plan")} />
           <SidebarOption icon={AlertTriangle} label="跳过项" selected={activeView === "skipped"} open={sidebarOpen} onClick={() => setActiveView("skipped")} />
           <SidebarOption icon={HardDrive} label="运行日志" selected={activeView === "log"} open={sidebarOpen} onClick={() => setActiveView("log")} />
+          <SidebarOption icon={PackageOpen} label="应用卸载" selected={activeView === "uninstall"} open={sidebarOpen} onClick={openUninstaller} />
         </nav>
 
         <div className="sidebar-account">
@@ -325,73 +406,93 @@ function App() {
       </aside>
 
       <section className="workspace" ref={workspaceRef}>
-        <header className="toolbar">
-          <div>
-            <p className="eyebrow">{status}</p>
-            <h2>先扫描，再执行</h2>
-          </div>
-          <div className="toolbar-actions">
-            <button className="icon-button" onClick={runScan} disabled={busy} title="扫描">
-              <RefreshCw size={18} className={busy ? "spin" : ""} />
-            </button>
-            <button className="primary-button" onClick={runExecute} disabled={busy || (safeItems.length === 0 && selectedRiskDeleteCount === 0)}>
-              <Play size={17} /> {selectedRiskDeleteCount ? `执行并删除勾选 ${selectedRiskDeleteCount} 项` : "执行低风险"}
-            </button>
-          </div>
-        </header>
-
-        <GlassCard className="control-card">
-          <label>
-            <span>扫描磁盘（单选）</span>
-            <DrivePicker options={driveOptions} value={drives} onChange={setDrives} />
-          </label>
-          <label>
-            <span>移动目标</span>
-            <input value={targetRoot} onChange={(event) => setTargetRoot(event.target.value)} />
-          </label>
-          <button className="scan-button" onClick={runScan} disabled={busy}>
-            <RefreshCw size={18} className={busy ? "spin" : ""} /> 开始扫描
-          </button>
-        </GlassCard>
-
-        <section className="metrics">
-          <Metric icon={<Trash2 size={19} />} label="低风险可处理" value={formatGB(totalSafeGB)} />
-          <Metric icon={<CheckCircle2 size={19} />} label="中风险" value={`${mediumCount} 项`} />
-          <Metric icon={<AlertTriangle size={19} />} label="高风险" value={`${highCount} 项`} />
-          <Metric icon={<HardDrive size={19} />} label="报告目录" value={report.reportDir ? "已生成" : "未扫描"} />
-        </section>
-
-        <ProgressPanel
-          log={log}
-          busy={busy}
-          result={lastRunResult}
-          expanded={progressExpanded}
-          onToggleExpanded={() => setProgressExpanded((current) => !current)}
-        />
-
-        <GlassCard className="content-card" glowColor="orange">
+        <AnimatedContent viewKey={activeView} className="view-transition">
           {activeView === "plan" && (
-            <PlanView
-              candidates={candidates}
-              driveSummary={driveSummary}
-              selectedRiskDeletes={selectedRiskDeletes}
-              onToggleRiskDelete={toggleRiskDelete}
-              onDeleteSelected={runDeleteSelectedRiskItems}
+            <>
+            <header className="toolbar">
+              <div>
+                <p className="eyebrow">{status}</p>
+                <h2>先扫描，再执行</h2>
+              </div>
+              <div className="toolbar-actions">
+                <button className="icon-button" onClick={runScan} disabled={busy} title="扫描">
+                  <RefreshCw size={18} className={busy ? "spin" : ""} />
+                </button>
+                <button className="primary-button" onClick={runExecute} disabled={busy || (safeItems.length === 0 && selectedRiskDeleteCount === 0)}>
+                  <Play size={17} /> {selectedRiskDeleteCount ? `执行并删除勾选 ${selectedRiskDeleteCount} 项` : "执行低风险"}
+                </button>
+              </div>
+            </header>
+
+            <GlassCard className="control-card">
+              <label>
+                <span>扫描磁盘（单选）</span>
+                <DrivePicker options={driveOptions} value={drives} onChange={setDrives} />
+              </label>
+              <label>
+                <span>移动目标</span>
+                <input value={targetRoot} onChange={(event) => setTargetRoot(event.target.value)} />
+              </label>
+              <button className="scan-button" onClick={runScan} disabled={busy}>
+                <RefreshCw size={18} className={busy ? "spin" : ""} /> 开始扫描
+              </button>
+            </GlassCard>
+
+            <section className="metrics">
+              <Metric icon={<Trash2 size={19} />} label="低风险可处理" value={formatGB(totalSafeGB)} />
+              <Metric icon={<CheckCircle2 size={19} />} label="中风险" value={`${mediumCount} 项`} />
+              <Metric icon={<AlertTriangle size={19} />} label="高风险" value={`${highCount} 项`} />
+              <Metric icon={<HardDrive size={19} />} label="报告目录" value={report.reportDir ? "已生成" : "未扫描"} />
+            </section>
+
+            <ProgressPanel
+              log={log}
+              busy={busy}
+              result={lastRunResult}
+              expanded={progressExpanded}
+              onToggleExpanded={() => setProgressExpanded((current) => !current)}
             />
+            </>
           )}
-          {activeView === "skipped" && (
-            <SkippedView
-              candidates={candidates}
-              observations={observations}
-              selectedRiskDeletes={selectedRiskDeletes}
-              onToggleRiskDelete={toggleRiskDelete}
-            />
-          )}
-          {activeView === "log" && (
-            <pre className="log-view" ref={shellRef}>{log || "暂无运行日志。扫描或执行后会显示 PowerShell 输出。"}</pre>
-          )}
-          {activeView === "settings" && <SettingsView scanMode={scanMode} onScanModeChange={setScanMode} />}
-        </GlassCard>
+
+          <GlassCard className="content-card" glowColor="orange">
+            {activeView === "plan" && (
+              <PlanView
+                candidates={candidates}
+                driveSummary={driveSummary}
+                selectedRiskDeletes={selectedRiskDeletes}
+                onToggleRiskDelete={toggleRiskDelete}
+                onDeleteSelected={runDeleteSelectedRiskItems}
+              />
+            )}
+            {activeView === "skipped" && (
+              <SkippedView
+                candidates={candidates}
+                observations={observations}
+                selectedRiskDeletes={selectedRiskDeletes}
+                onToggleRiskDelete={toggleRiskDelete}
+              />
+            )}
+            {activeView === "log" && (
+              <pre className="log-view" ref={shellRef}>{log || "暂无运行日志。扫描或执行后会显示 PowerShell 输出。"}</pre>
+            )}
+            {activeView === "uninstall" && (
+              <UninstallView
+                apps={installedApps}
+                error={appsError}
+                loading={appsLoading}
+                busy={busy}
+                state={uninstallState}
+                onRefresh={refreshInstalledApps}
+                onRun={runApplicationUninstaller}
+                onToggleResidual={(id, checked) => setUninstallState((current) => current ? { ...current, selected: { ...current.selected, [id]: checked } } : current)}
+                onRemoveSelected={removeSelectedResiduals}
+                onOpenPath={(value) => window.diskCleaner.openPath(value)}
+              />
+            )}
+            {activeView === "settings" && <SettingsView scanMode={scanMode} onScanModeChange={setScanMode} />}
+          </GlassCard>
+        </AnimatedContent>
       </section>
       <ConfirmDialog dialog={dialog} />
     </main>
@@ -440,19 +541,21 @@ function App() {
 
 function GlassCard({ children, className = "", glowColor = "blue" }) {
   return (
-    <GlowCard className={`glass-card ${className}`} glowColor={glowColor}>
-      <GlassSurface
-        className="glass-surface-fill"
-        width="100%"
-        height="100%"
-        borderRadius={18}
-        backgroundOpacity={0.12}
-        saturation={1.1}
-        distortionScale={-90}
-      >
-        <div className="glass-content">{children}</div>
-      </GlassSurface>
-    </GlowCard>
+    <BorderGlow className="primary-card-glow" glowColor="201 66 64" borderRadius={18}>
+      <GlowCard className={`glass-card ${className}`} glowColor={glowColor}>
+        <GlassSurface
+          className="glass-surface-fill"
+          width="100%"
+          height="100%"
+          borderRadius={18}
+          backgroundOpacity={0.12}
+          saturation={1.1}
+          distortionScale={-90}
+        >
+          <div className="glass-content">{children}</div>
+        </GlassSurface>
+      </GlowCard>
+    </BorderGlow>
   );
 }
 
@@ -631,6 +734,7 @@ function ProgressPanel({ log, busy, result, expanded, onToggleExpanded }) {
   }
 
   return (
+    <BorderGlow className="progress-card-glow" glowColor="199 72 69" borderRadius={16}>
     <section className={expanded ? "progress-card expanded" : "progress-card"}>
       <div className="progress-head">
         <div>
@@ -647,6 +751,7 @@ function ProgressPanel({ log, busy, result, expanded, onToggleExpanded }) {
         {visibleLines.length ? visibleLines.map((line, index) => <p key={`${line}-${index}`}>{line}</p>) : <p>等待扫描输出...</p>}
       </div>
     </section>
+    </BorderGlow>
   );
 }
 
@@ -704,6 +809,64 @@ function parentFolderOf(pathValue) {
   const normalized = String(pathValue || "");
   const index = Math.max(normalized.lastIndexOf("\\"), normalized.lastIndexOf("/"));
   return index > 2 ? normalized.slice(0, index) : normalized;
+}
+
+function UninstallView({ apps, error, loading, busy, state, onRefresh, onRun, onToggleResidual, onRemoveSelected, onOpenPath }) {
+  const [query, setQuery] = useState("");
+  const visibleApps = apps.filter((appEntry) => `${appEntry.name} ${appEntry.publisher} ${appEntry.version}`.toLowerCase().includes(query.trim().toLowerCase()));
+  return (
+    <div className="uninstall-view">
+      <div className="section-header">
+        <div>
+          <h3>应用卸载</h3>
+          <span>仅启动 Windows 已登记的软件原始卸载程序；不会使用强制卸载或静默参数。</span>
+        </div>
+        <div className="section-actions">
+          <button className="refresh-apps-button" type="button" onClick={onRefresh} disabled={loading || busy} title="刷新已安装应用" aria-label="刷新已安装应用">
+            <RefreshCw size={16} className={loading ? "spin" : ""} />
+          </button>
+        </div>
+      </div>
+      <input className="app-search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索已安装应用、发布者或版本" />
+      <div className="app-list">
+        {loading ? <div className="empty-state compact">正在读取 Windows 已安装应用…</div> : visibleApps.length ? visibleApps.map((appEntry) => (
+          <article className="app-row" key={appEntry.id}>
+            <div>
+              <strong>{appEntry.name}</strong>
+              <p>{[appEntry.publisher, appEntry.version].filter(Boolean).join(" · ") || "未提供发布者或版本"}</p>
+              {appEntry.installLocation && <code title={appEntry.installLocation}>{appEntry.installLocation}</code>}
+            </div>
+            <button type="button" className="uninstall-button" disabled={busy} onClick={() => onRun(appEntry)}>运行卸载程序</button>
+          </article>
+        )) : <div className="empty-state compact">{error ? `读取已安装应用失败：${error}` : apps.length ? "没有匹配当前搜索条件的应用。" : "未读取到已安装应用，请点击右上角刷新图标重试。"}</div>}
+      </div>
+      {!loading && apps.length > 0 && <p className="settings-note">已读取 {apps.length} 个 Windows 卸载登记项。</p>}
+      {state && (
+        <section className="residual-panel">
+          <div className="risk-group-head">
+            <div>
+              <h4>卸载后残留：{state.app.name}</h4>
+              <p>仅列出该应用登记的安装目录和它自己的卸载注册表项；两项默认不处理。</p>
+            </div>
+            <button type="button" className="residual-clean-button" disabled={busy || !state.candidates.length} onClick={onRemoveSelected}>清理勾选项</button>
+          </div>
+          {state.candidates.length ? state.candidates.map((candidate) => (
+            <div className="residual-row" key={candidate.id}>
+              <label className="delete-check">
+                <input type="checkbox" checked={Boolean(state.selected[candidate.id])} onChange={(event) => onToggleResidual(candidate.id, event.target.checked)} />
+                清理
+              </label>
+              <div>
+                <strong>{candidate.kind === "registry" ? "卸载注册表项" : "安装目录残留"}</strong>
+                <p>{candidate.path}</p>
+              </div>
+              {candidate.kind === "directory" && <button type="button" onClick={() => onOpenPath(candidate.path)}>打开目录</button>}
+            </div>
+          )) : <div className="empty-state compact">未发现可安全定位的登记残留项。</div>}
+        </section>
+      )}
+    </div>
+  );
 }
 
 function isDriveRootPath(pathValue) {

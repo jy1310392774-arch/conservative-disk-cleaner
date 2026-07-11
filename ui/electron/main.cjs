@@ -4,6 +4,8 @@ const fs = require("fs");
 const path = require("path");
 
 const devServerUrl = process.env.DISK_CLEANER_DEV_SERVER;
+const uninstallEntries = new Map();
+const uninstallResiduals = new Map();
 
 function projectRoot() {
   return path.resolve(__dirname, "..", "..");
@@ -156,6 +158,71 @@ function isDriveRootPath(value) {
   return /^[A-Za-z]:[\\/]?$/.test(String(value || "").trim());
 }
 
+function powershellJsonFile(scriptFile) {
+  return new Promise((resolve) => {
+    const ps = spawn("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", scriptFile], { windowsHide: true });
+    let output = "";
+    let errorOutput = "";
+    ps.stdout.on("data", (chunk) => { output += chunk.toString("utf8"); });
+    ps.stderr.on("data", (chunk) => { errorOutput += chunk.toString("utf8"); });
+    ps.on("close", (code) => {
+      try {
+        const parsed = JSON.parse(output.replace(/^\uFEFF/, "").trim() || "[]");
+        resolve({ entries: Array.isArray(parsed) ? parsed : [parsed], error: null });
+      } catch (error) {
+        debugLog(`installed application JSON parse failed: ${error.message}; stderr=${errorOutput.slice(0, 400)}`);
+        resolve({ entries: [], error: errorOutput.trim() || `Unable to read Windows uninstall entries (exit code ${code ?? 1}).` });
+      }
+    });
+  });
+}
+
+function cleanRegistryText(value) {
+  return String(value || "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
+}
+
+function canTreatAsInstallDirectory(value) {
+  const target = String(value || "").trim();
+  if (!target || isDriveRootPath(target)) return false;
+  try {
+    const stat = fs.lstatSync(target);
+    return stat.isDirectory() && !stat.isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
+async function listInstalledApplications() {
+  const queryScript = app.isPackaged
+    ? path.join(runtimeRoot(), "list-installed-apps.ps1")
+    : path.join(__dirname, "list-installed-apps.ps1");
+  const result = await powershellJsonFile(queryScript);
+  const entries = result.entries;
+  const seen = new Set();
+  uninstallEntries.clear();
+  const apps = entries.map((entry, index) => {
+    const name = cleanRegistryText(entry.DisplayName);
+    const uninstallString = cleanRegistryText(entry.UninstallString);
+    if (!name || !uninstallString) return null;
+    const key = `${name}|${uninstallString}`.toLowerCase();
+    if (seen.has(key)) return null;
+    seen.add(key);
+    const id = `app-${Date.now()}-${index}`;
+    const appEntry = {
+      id,
+      name,
+      version: cleanRegistryText(entry.DisplayVersion),
+      publisher: cleanRegistryText(entry.Publisher),
+      installLocation: cleanRegistryText(entry.InstallLocation).replace(/^"|"$/g, ""),
+      uninstallString,
+      registryPath: cleanRegistryText(entry.PSPath)
+    };
+    uninstallEntries.set(id, appEntry);
+    return appEntry;
+  }).filter(Boolean).sort((left, right) => left.name.localeCompare(right.name));
+  return { apps, error: result.error };
+}
+
 function runPowerShell(args, onData) {
   return new Promise((resolve) => {
     const ps = spawn("powershell.exe", [
@@ -213,6 +280,66 @@ ipcMain.handle("disk:listDrives", async () => {
       { DeviceID: "E:", VolumeName: "", SizeGB: 0, FreeGB: 0 }
     ];
   }
+});
+
+ipcMain.handle("uninstall:listApps", async () => listInstalledApplications());
+
+ipcMain.handle("uninstall:run", async (_event, appId) => {
+  const appEntry = uninstallEntries.get(appId);
+  if (!appEntry) return { code: 2, output: "The selected application is no longer available. Refresh the list and try again." };
+  return new Promise((resolve) => {
+    const command = appEntry.uninstallString;
+    const process = spawn("cmd.exe", ["/d", "/s", "/c", command], { windowsHide: false });
+    process.on("error", (error) => resolve({ code: 1, output: error.message }));
+    process.on("close", (code) => resolve({ code: code ?? 1, output: `Uninstaller finished with exit code ${code ?? 1}.` }));
+  });
+});
+
+ipcMain.handle("uninstall:scanResiduals", async (_event, appId) => {
+  const appEntry = uninstallEntries.get(appId);
+  if (!appEntry) return { code: 2, candidates: [], output: "The selected application is no longer available." };
+  const candidates = [];
+  if (canTreatAsInstallDirectory(appEntry.installLocation)) {
+    candidates.push({ id: "install-directory", kind: "directory", path: appEntry.installLocation, label: "Registered installation directory", risk: "High" });
+  }
+  if (appEntry.registryPath && /^Microsoft\.PowerShell\.Core\\Registry::HKEY_(LOCAL_MACHINE|CURRENT_USER)\\/i.test(appEntry.registryPath)) {
+    candidates.push({ id: "uninstall-registry-key", kind: "registry", path: appEntry.registryPath, label: "Application uninstall registry entry", risk: "High" });
+  }
+  uninstallResiduals.set(appId, candidates);
+  return { code: 0, candidates, output: candidates.length ? "Review the remaining items before selecting any cleanup action." : "No registered installation directory or uninstall registry entry remains." };
+});
+
+ipcMain.handle("uninstall:removeResiduals", async (_event, appId, candidateIds) => {
+  const candidates = uninstallResiduals.get(appId) || [];
+  const selected = new Set(Array.isArray(candidateIds) ? candidateIds : []);
+  const output = [];
+  for (const candidate of candidates) {
+    if (!selected.has(candidate.id)) continue;
+    try {
+      if (candidate.kind === "directory") {
+        if (!canTreatAsInstallDirectory(candidate.path)) {
+          output.push(`[Skipped] ${candidate.path}`);
+          continue;
+        }
+        const command = `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8; Add-Type -AssemblyName Microsoft.VisualBasic; [Microsoft.VisualBasic.FileIO.FileSystem]::DeleteDirectory($args[0], 'OnlyErrorDialogs', 'SendToRecycleBin')`;
+        await new Promise((resolve) => {
+          const ps = spawn("powershell.exe", ["-NoProfile", "-Command", command, candidate.path], { windowsHide: true });
+          ps.on("close", (code) => resolve(code));
+        });
+        output.push(`[Recycle Bin] ${candidate.path}`);
+      } else if (candidate.kind === "registry" && /^Microsoft\.PowerShell\.Core\\Registry::HKEY_(LOCAL_MACHINE|CURRENT_USER)\\/i.test(candidate.path)) {
+        const command = "Remove-Item -LiteralPath $args[0] -Recurse -Force -ErrorAction Stop";
+        const code = await new Promise((resolve) => {
+          const ps = spawn("powershell.exe", ["-NoProfile", "-Command", command, candidate.path], { windowsHide: true });
+          ps.on("close", resolve);
+        });
+        output.push(code === 0 ? `[Registry removed] ${candidate.path}` : `[Failed] ${candidate.path}`);
+      }
+    } catch (error) {
+      output.push(`[Failed] ${candidate.path}: ${error.message}`);
+    }
+  }
+  return { code: 0, output: output.join("\n") || "No residual items were selected." };
 });
 
 ipcMain.handle("disk:scan", async (event, options) => {
