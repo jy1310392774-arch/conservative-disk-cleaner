@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld("diskCleaner", {
     return () => ipcRenderer.removeListener("disk:log", listener);
   },
   listInstalledApps: () => ipcRenderer.invoke("uninstall:listApps"),
+  measureInstalledAppSizes: (appIds) => ipcRenderer.invoke("uninstall:measureSizes", appIds),
   runUninstaller: (appId) => ipcRenderer.invoke("uninstall:run", appId),
   scanUninstallResiduals: (appId) => ipcRenderer.invoke("uninstall:scanResiduals", appId),
   removeUninstallResiduals: (appId, candidateIds) => ipcRenderer.invoke("uninstall:removeResiduals", appId, candidateIds)

@@ -6,6 +6,7 @@ const path = require("path");
 const devServerUrl = process.env.DISK_CLEANER_DEV_SERVER;
 const uninstallEntries = new Map();
 const uninstallResiduals = new Map();
+const installDirectorySizeCache = new Map();
 
 function projectRoot() {
   return path.resolve(__dirname, "..", "..");
@@ -181,6 +182,63 @@ function cleanRegistryText(value) {
   return String(value || "").replace(/[\u0000-\u001F\u007F]/g, "").trim();
 }
 
+function expandWindowsEnvironment(value) {
+  return String(value || "").replace(/%([^%]+)%/g, (match, name) => process.env[name] || process.env[name.toUpperCase()] || match);
+}
+
+function resolveUninstallCommand(value) {
+  const command = expandWindowsEnvironment(value).trim();
+  if (!command) return null;
+  if (command.startsWith('"')) {
+    const closingQuote = command.indexOf('"', 1);
+    if (closingQuote < 2) return null;
+    return { executable: command.slice(1, closingQuote), arguments: command.slice(closingQuote + 1).trim() };
+  }
+
+  const executableMatch = command.match(/^(.+?\.(?:exe|com|bat|cmd))(?=\s|$)/i);
+  if (executableMatch) {
+    return { executable: executableMatch[1].trim(), arguments: command.slice(executableMatch[1].length).trim() };
+  }
+
+  const firstSpace = command.search(/\s/);
+  return firstSpace < 0
+    ? { executable: command, arguments: "" }
+    : { executable: command.slice(0, firstSpace), arguments: command.slice(firstSpace).trim() };
+}
+
+function startUninstallerWithWindowsShell(uninstallString) {
+  const launch = resolveUninstallCommand(uninstallString);
+  if (!launch) return Promise.resolve({ code: 2, launched: false, output: "卸载命令为空或格式无效。" });
+  if (path.isAbsolute(launch.executable) && !fs.existsSync(launch.executable)) {
+    return Promise.resolve({ code: 2, launched: false, output: `卸载程序不存在：${launch.executable}` });
+  }
+
+  const workingDirectory = path.isAbsolute(launch.executable) && fs.existsSync(launch.executable)
+    ? path.dirname(launch.executable)
+    : runtimeRoot();
+  const payload = Buffer.from(JSON.stringify({ ...launch, workingDirectory }), "utf8").toString("base64");
+  const script = `[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;
+    $payload = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${payload}')) | ConvertFrom-Json;
+    $params = @{ FilePath = [string]$payload.executable; WorkingDirectory = [string]$payload.workingDirectory; PassThru = $true; ErrorAction = 'Stop' };
+    if ($payload.arguments) { $params.ArgumentList = [string]$payload.arguments }
+    $process = Start-Process @params;
+    [pscustomobject]@{ ProcessId = $process.Id } | ConvertTo-Json -Compress;`;
+  const encodedCommand = Buffer.from(script, "utf16le").toString("base64");
+
+  return new Promise((resolve) => {
+    const ps = spawn("powershell.exe", ["-NoProfile", "-EncodedCommand", encodedCommand], { windowsHide: true });
+    let output = "";
+    let errorOutput = "";
+    ps.stdout.on("data", (chunk) => { output += chunk.toString("utf8"); });
+    ps.stderr.on("data", (chunk) => { errorOutput += chunk.toString("utf8"); });
+    ps.on("error", (error) => resolve({ code: 1, launched: false, output: error.message }));
+    ps.on("close", (code) => {
+      if (code === 0) resolve({ code: 0, launched: true, output: output.trim() || "卸载程序已启动。" });
+      else resolve({ code: code ?? 1, launched: false, output: errorOutput.trim() || output.trim() || "Windows 无法启动该卸载程序。" });
+    });
+  });
+}
+
 function canTreatAsInstallDirectory(value) {
   const target = String(value || "").trim();
   if (!target || isDriveRootPath(target)) return false;
@@ -190,6 +248,46 @@ function canTreatAsInstallDirectory(value) {
   } catch {
     return false;
   }
+}
+
+async function measureInstallDirectory(rootPath) {
+  const normalizedRoot = String(rootPath || "").toLowerCase();
+  if (!canTreatAsInstallDirectory(rootPath)) return null;
+  if (installDirectorySizeCache.has(normalizedRoot)) return installDirectorySizeCache.get(normalizedRoot);
+
+  const measurement = (async () => {
+    const pending = [rootPath];
+    let totalBytes = 0;
+    while (pending.length) {
+      const current = pending.pop();
+      let entries;
+      try {
+        entries = await fs.promises.readdir(current, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      const fileSizes = await Promise.all(entries.map(async (entry) => {
+        if (entry.isSymbolicLink()) return 0;
+        const fullPath = path.join(current, entry.name);
+        if (entry.isDirectory()) {
+          pending.push(fullPath);
+          return 0;
+        }
+        if (!entry.isFile()) return 0;
+        try {
+          return (await fs.promises.stat(fullPath)).size;
+        } catch {
+          return 0;
+        }
+      }));
+      totalBytes += fileSizes.reduce((sum, size) => sum + size, 0);
+    }
+    return totalBytes;
+  })();
+
+  installDirectorySizeCache.set(normalizedRoot, measurement);
+  return measurement;
 }
 
 async function listInstalledApplications() {
@@ -208,13 +306,17 @@ async function listInstalledApplications() {
     if (seen.has(key)) return null;
     seen.add(key);
     const id = `app-${Date.now()}-${index}`;
+    const estimatedSizeBytes = Number(entry.EstimatedSize) > 0 ? Number(entry.EstimatedSize) * 1024 : null;
+    const installLocation = cleanRegistryText(entry.InstallLocation).replace(/^"|"$/g, "");
     const appEntry = {
       id,
       name,
       version: cleanRegistryText(entry.DisplayVersion),
       publisher: cleanRegistryText(entry.Publisher),
-      installLocation: cleanRegistryText(entry.InstallLocation).replace(/^"|"$/g, ""),
+      installLocation,
       uninstallString,
+      estimatedSizeBytes,
+      sizeStatus: estimatedSizeBytes ? "registered" : installLocation ? "pending" : "unknown",
       registryPath: cleanRegistryText(entry.PSPath)
     };
     uninstallEntries.set(id, appEntry);
@@ -284,15 +386,26 @@ ipcMain.handle("disk:listDrives", async () => {
 
 ipcMain.handle("uninstall:listApps", async () => listInstalledApplications());
 
+ipcMain.handle("uninstall:measureSizes", async (_event, appIds) => {
+  const selected = (Array.isArray(appIds) ? appIds : [])
+    .map((appId) => uninstallEntries.get(appId))
+    .filter((entry) => entry && !entry.estimatedSizeBytes && entry.installLocation);
+  const sizes = {};
+  let cursor = 0;
+  async function worker() {
+    while (cursor < selected.length) {
+      const entry = selected[cursor++];
+      sizes[entry.id] = await measureInstallDirectory(entry.installLocation);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(2, selected.length) }, () => worker()));
+  return sizes;
+});
+
 ipcMain.handle("uninstall:run", async (_event, appId) => {
   const appEntry = uninstallEntries.get(appId);
   if (!appEntry) return { code: 2, output: "The selected application is no longer available. Refresh the list and try again." };
-  return new Promise((resolve) => {
-    const command = appEntry.uninstallString;
-    const process = spawn("cmd.exe", ["/d", "/s", "/c", command], { windowsHide: false });
-    process.on("error", (error) => resolve({ code: 1, output: error.message }));
-    process.on("close", (code) => resolve({ code: code ?? 1, output: `Uninstaller finished with exit code ${code ?? 1}.` }));
-  });
+  return startUninstallerWithWindowsShell(appEntry.uninstallString);
 });
 
 ipcMain.handle("uninstall:scanResiduals", async (_event, appId) => {

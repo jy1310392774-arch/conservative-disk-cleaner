@@ -12,6 +12,6 @@ $apps = Get-ItemProperty -Path $roots -ErrorAction SilentlyContinue |
     $_.UninstallString -and
     -not $_.SystemComponent
   } |
-  Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString, PSPath
+  Select-Object DisplayName, DisplayVersion, Publisher, InstallLocation, UninstallString, EstimatedSize, PSPath
 
 @($apps) | ConvertTo-Json -Compress -Depth 3

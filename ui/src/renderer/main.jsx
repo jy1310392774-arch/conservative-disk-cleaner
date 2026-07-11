@@ -36,6 +36,18 @@ function formatGB(value) {
   return `${number.toFixed(number >= 10 ? 1 : 2)} GB`;
 }
 
+function formatBytes(value) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "未知";
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(bytes >= 10 * 1024 ** 3 ? 1 : 2)} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2))} MB`;
+}
+
+function appSizeLabel(appEntry) {
+  if (appEntry.sizeStatus === "pending") return "计算中…";
+  return formatBytes(appEntry.estimatedSizeBytes);
+}
+
 function riskLabel(risk) {
   if (risk === "Low") return "低";
   if (risk === "Medium") return "中";
@@ -309,6 +321,7 @@ function App() {
     setInstalledApps(result?.apps || []);
     setAppsError(result?.error || "");
     setAppsLoading(false);
+    measureMissingAppSizes(result?.apps || []);
   }
 
   async function refreshInstalledApps() {
@@ -317,6 +330,22 @@ function App() {
     setInstalledApps(result?.apps || []);
     setAppsError(result?.error || "");
     setAppsLoading(false);
+    measureMissingAppSizes(result?.apps || []);
+  }
+
+  async function measureMissingAppSizes(items) {
+    const pendingIds = items.filter((appEntry) => appEntry.sizeStatus === "pending").map((appEntry) => appEntry.id);
+    if (!pendingIds.length) return;
+    const sizes = await window.diskCleaner.measureInstalledAppSizes(pendingIds);
+    setInstalledApps((current) => current.map((appEntry) => {
+      if (!pendingIds.includes(appEntry.id)) return appEntry;
+      const measuredBytes = Number(sizes?.[appEntry.id]);
+      return {
+        ...appEntry,
+        estimatedSizeBytes: measuredBytes > 0 ? measuredBytes : null,
+        sizeStatus: measuredBytes >= 0 ? "measured" : "unknown"
+      };
+    }));
   }
 
   async function runApplicationUninstaller(appEntry) {
@@ -329,21 +358,31 @@ function App() {
     if (!approved) return;
 
     setBusy(true);
-    setUninstallState({ app: appEntry, candidates: [], selected: {} });
     const result = await window.diskCleaner.runUninstaller(appEntry.id);
     setBusy(false);
-    const inspect = await showConfirm({
-      title: "卸载程序已结束",
-      message: `“${appEntry.name}”的卸载程序已退出。\n\n是否检查该软件登记的安装目录和自身卸载注册表项？扫描不会删除任何内容。`,
-      confirmText: "检查残留",
-      cancelText: "暂不检查",
-      danger: false
-    });
-    if (!inspect) return;
+    if (!result?.launched) {
+      await showAlert({
+        title: "无法启动卸载程序",
+        message: result?.output || "Windows 未能启动该软件登记的卸载程序。",
+        confirmText: "知道了"
+      });
+      return;
+    }
+    setUninstallState({ app: appEntry, candidates: [], selected: {}, phase: "launched", output: result.output || "" });
+  }
+
+  async function scanApplicationResiduals() {
+    if (!uninstallState?.app) return;
     setBusy(true);
-    const residualResult = await window.diskCleaner.scanUninstallResiduals(appEntry.id);
+    const residualResult = await window.diskCleaner.scanUninstallResiduals(uninstallState.app.id);
     setBusy(false);
-    setUninstallState({ app: appEntry, candidates: residualResult.candidates || [], selected: {}, output: result.output || residualResult.output || "" });
+    setUninstallState((current) => current ? {
+      ...current,
+      phase: "review",
+      candidates: residualResult.candidates || [],
+      selected: {},
+      output: residualResult.output || current.output || ""
+    } : current);
   }
 
   async function removeSelectedResiduals() {
@@ -487,6 +526,7 @@ function App() {
                 onRun={runApplicationUninstaller}
                 onToggleResidual={(id, checked) => setUninstallState((current) => current ? { ...current, selected: { ...current.selected, [id]: checked } } : current)}
                 onRemoveSelected={removeSelectedResiduals}
+                onScanResiduals={scanApplicationResiduals}
                 onOpenPath={(value) => window.diskCleaner.openPath(value)}
               />
             )}
@@ -811,7 +851,7 @@ function parentFolderOf(pathValue) {
   return index > 2 ? normalized.slice(0, index) : normalized;
 }
 
-function UninstallView({ apps, error, loading, busy, state, onRefresh, onRun, onToggleResidual, onRemoveSelected, onOpenPath }) {
+function UninstallView({ apps, error, loading, busy, state, onRefresh, onRun, onToggleResidual, onRemoveSelected, onScanResiduals, onOpenPath }) {
   const [query, setQuery] = useState("");
   const visibleApps = apps.filter((appEntry) => `${appEntry.name} ${appEntry.publisher} ${appEntry.version}`.toLowerCase().includes(query.trim().toLowerCase()));
   return (
@@ -833,7 +873,7 @@ function UninstallView({ apps, error, loading, busy, state, onRefresh, onRun, on
           <article className="app-row" key={appEntry.id}>
             <div>
               <strong>{appEntry.name}</strong>
-              <p>{[appEntry.publisher, appEntry.version].filter(Boolean).join(" · ") || "未提供发布者或版本"}</p>
+              <p>{[appEntry.publisher, appEntry.version, `占用空间 ${appSizeLabel(appEntry)}`].filter(Boolean).join(" · ")}</p>
               {appEntry.installLocation && <code title={appEntry.installLocation}>{appEntry.installLocation}</code>}
             </div>
             <button type="button" className="uninstall-button" disabled={busy} onClick={() => onRun(appEntry)}>运行卸载程序</button>
@@ -841,7 +881,16 @@ function UninstallView({ apps, error, loading, busy, state, onRefresh, onRun, on
         )) : <div className="empty-state compact">{error ? `读取已安装应用失败：${error}` : apps.length ? "没有匹配当前搜索条件的应用。" : "未读取到已安装应用，请点击右上角刷新图标重试。"}</div>}
       </div>
       {!loading && apps.length > 0 && <p className="settings-note">已读取 {apps.length} 个 Windows 卸载登记项。</p>}
-      {state && (
+      {state?.phase === "launched" && (
+        <section className="uninstall-launched-panel">
+          <div>
+            <strong>“{state.app.name}”卸载程序已启动</strong>
+            <p>请先在软件自己的卸载窗口中完成或取消操作。完成后返回这里，再检查残留。</p>
+          </div>
+          <button type="button" disabled={busy} onClick={onScanResiduals}>已完成，检查残留</button>
+        </section>
+      )}
+      {state?.phase === "review" && (
         <section className="residual-panel">
           <div className="risk-group-head">
             <div>
