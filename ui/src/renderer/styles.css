@@ -42,7 +42,7 @@ button:disabled {
   position: relative;
   isolation: isolate;
   display: grid;
-  grid-template-columns: 250px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr);
   width: 100vw;
   height: 100vh;
   overflow: hidden;
@@ -156,12 +156,16 @@ button:disabled {
 .sidebar {
   display: flex;
   flex-direction: column;
+  width: 250px;
   min-width: 0;
-  padding: 64px 18px 20px;
-  border-right: 1px solid rgba(255, 255, 255, 0.76);
-  background: rgba(232, 238, 246, 0.72);
-  backdrop-filter: blur(24px) saturate(1.15);
+  height: 100vh;
+  padding: 60px 10px 0;
+  border-right: 1px solid rgba(148, 163, 184, 0.26);
+  background: rgba(248, 251, 254, 0.76);
+  box-shadow: 4px 0 24px rgba(51, 65, 85, 0.05);
+  backdrop-filter: blur(24px) saturate(1.1);
   -webkit-app-region: drag;
+  transition: width 280ms ease;
 }
 
 .sidebar button,
@@ -174,7 +178,11 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 10px 28px;
+  min-height: 58px;
+  padding: 0 10px 18px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  overflow: hidden;
 }
 
 .app-mark {
@@ -201,12 +209,156 @@ button:disabled {
   font-size: 13px;
 }
 
-.nav-list {
-  display: grid;
-  gap: 8px;
+.app-title-copy {
+  min-width: 150px;
+  transition: opacity 180ms ease;
 }
 
-.nav-list button,
+.nav-list {
+  display: grid;
+  gap: 3px;
+}
+
+.sidebar-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 44px;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  color: #64748b;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  text-align: left;
+  transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.sidebar-option::before {
+  position: absolute;
+  left: 0;
+  width: 2px;
+  height: 22px;
+  content: "";
+  border-radius: 0 2px 2px 0;
+  background: transparent;
+}
+
+.sidebar-option:hover {
+  color: #26384c;
+  background: rgba(226, 232, 240, 0.5);
+}
+
+.sidebar-option.active {
+  color: #1e5276;
+  background: rgba(219, 234, 245, 0.76);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+}
+
+.sidebar-option.active::before {
+  background: #2f7aa5;
+}
+
+.sidebar-option-icon {
+  display: grid;
+  flex: 0 0 44px;
+  height: 44px;
+  place-items: center;
+}
+
+.sidebar-option-label {
+  min-width: 142px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.sidebar-account {
+  display: grid;
+  gap: 3px;
+  margin-top: auto;
+  padding: 14px 0 72px;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.sidebar-account > span {
+  padding: 0 12px 7px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.sidebar-toggle {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 56px;
+  padding: 0;
+  color: #64748b;
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  background: rgba(255, 255, 255, 0.38);
+  transition: color 180ms ease, background 180ms ease;
+}
+
+.sidebar-toggle:hover {
+  color: #1e5276;
+  background: rgba(226, 232, 240, 0.5);
+}
+
+.sidebar-toggle > span {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.toggle-icon {
+  width: 44px;
+  transition: transform 280ms ease;
+}
+
+.toggle-icon.open {
+  transform: rotate(180deg);
+}
+
+.sidebar-closed {
+  width: 64px;
+}
+
+.sidebar-closed .app-title {
+  justify-content: center;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.sidebar-closed .app-title-copy {
+  width: 0;
+  min-width: 0;
+  opacity: 0;
+}
+
+.sidebar-closed .sidebar-option {
+  justify-content: center;
+}
+
+.sidebar-closed .sidebar-option-label {
+  display: none;
+}
+
+.sidebar-closed .sidebar-account {
+  padding-bottom: 72px;
+}
+
+.sidebar-closed .sidebar-toggle {
+  justify-content: center;
+}
+
 .ghost-button {
   display: flex;
   align-items: center;
@@ -221,20 +373,6 @@ button:disabled {
   text-align: left;
 }
 
-.nav-list button:hover,
-.ghost-button:hover {
-  background: rgba(255, 255, 255, 0.52);
-}
-
-.nav-list button.active {
-  color: #16202b;
-  background: rgba(255, 255, 255, 0.86);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.8), 0 8px 18px rgba(75, 88, 105, 0.1);
-}
-
-.ghost-button {
-  margin-top: auto;
-}
 
 .workspace {
   display: flex;

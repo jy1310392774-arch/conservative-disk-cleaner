@@ -4,6 +4,7 @@ import LiquidGlass from "liquid-glass-react";
 import {
   AlertTriangle,
   CheckCircle2,
+  ChevronsRight,
   FolderOpen,
   HardDrive,
   ListChecks,
@@ -80,6 +81,7 @@ function App() {
   const [progressExpanded, setProgressExpanded] = useState(false);
   const [lastRunResult, setLastRunResult] = useState(null);
   const [dialog, setDialog] = useState(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const shellRef = useRef(null);
   const workspaceRef = useRef(null);
 
@@ -295,32 +297,30 @@ function App() {
   return (
     <main className="app-shell">
       <BackgroundGradientAnimation />
-      <aside className="sidebar">
+      <aside className={sidebarOpen ? "sidebar sidebar-open" : "sidebar sidebar-closed"}>
         <div className="app-title">
           <div className="app-mark"><ShieldCheck size={22} /></div>
-          <div>
+          <div className="app-title-copy">
             <h1>磁盘清理</h1>
             <p>极度保守模式</p>
           </div>
         </div>
 
         <nav className="nav-list">
-          <button className={activeView === "plan" ? "active" : ""} onClick={() => setActiveView("plan")}>
-            <ListChecks size={18} /> 清理计划
-          </button>
-          <button className={activeView === "skipped" ? "active" : ""} onClick={() => setActiveView("skipped")}>
-            <AlertTriangle size={18} /> 跳过项
-          </button>
-          <button className={activeView === "log" ? "active" : ""} onClick={() => setActiveView("log")}>
-            <HardDrive size={18} /> 运行日志
-          </button>
-          <button className={activeView === "settings" ? "active" : ""} onClick={() => setActiveView("settings")}>
-            <Settings size={18} /> 设置
-          </button>
+          <SidebarOption icon={ListChecks} label="清理计划" selected={activeView === "plan"} open={sidebarOpen} onClick={() => setActiveView("plan")} />
+          <SidebarOption icon={AlertTriangle} label="跳过项" selected={activeView === "skipped"} open={sidebarOpen} onClick={() => setActiveView("skipped")} />
+          <SidebarOption icon={HardDrive} label="运行日志" selected={activeView === "log"} open={sidebarOpen} onClick={() => setActiveView("log")} />
         </nav>
 
-        <button className="ghost-button" onClick={() => window.diskCleaner.openReports()}>
-          <FolderOpen size={17} /> 打开报告目录
+        <div className="sidebar-account">
+          {sidebarOpen && <span>工具</span>}
+          <SidebarOption icon={Settings} label="设置" selected={activeView === "settings"} open={sidebarOpen} onClick={() => setActiveView("settings")} />
+          <SidebarOption icon={FolderOpen} label="打开报告目录" open={sidebarOpen} onClick={() => window.diskCleaner.openReports()} />
+        </div>
+
+        <button className="sidebar-toggle" onClick={() => setSidebarOpen((current) => !current)} title={sidebarOpen ? "收起侧栏" : "展开侧栏"}>
+          <ChevronsRight size={18} className={sidebarOpen ? "toggle-icon open" : "toggle-icon"} />
+          {sidebarOpen && <span>收起</span>}
         </button>
       </aside>
 
@@ -454,6 +454,15 @@ function GlassCard({ children, className = "", glowColor = "blue" }) {
       </LiquidGlass>
       <div className="glass-content">{children}</div>
     </GlowCard>
+  );
+}
+
+function SidebarOption({ icon: Icon, label, selected = false, open, onClick }) {
+  return (
+    <button className={selected ? "sidebar-option active" : "sidebar-option"} onClick={onClick} title={!open ? label : undefined}>
+      <span className="sidebar-option-icon"><Icon size={17} /></span>
+      {open && <span className="sidebar-option-label">{label}</span>}
+    </button>
   );
 }
 
